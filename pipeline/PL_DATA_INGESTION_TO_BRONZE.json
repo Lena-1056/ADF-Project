@@ -1,0 +1,60 @@
+{
+	"name": "PL_DATA_INGESTION_TO_BRONZE",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup_TableList",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT\n    s.name AS SchemaName,\n    t.name AS TableName\nFROM sys.tables AS t\nINNER JOIN sys.schemas AS s\n    ON t.schema_id = s.schema_id\nWHERE s.name IN (\n    'audit', 'customer', 'finance', 'hr', 'inventory',\n    'marketing', 'metadata', 'product', 'reference', 'sales',\n    'shipping', 'staging', 'support'\n)\nAND t.is_ms_shipped = 0\nAND NOT (\n    s.name = 'audit'\n    AND t.name = 'ADFCopyValidationLog'\n)\nORDER BY s.name, t.name;",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_AZURE_SQL",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Execute For Each Activity",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Lookup_TableList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_FOR_EACH_ACTIVITY",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"annotations": []
+	}
+}

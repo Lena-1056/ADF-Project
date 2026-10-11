@@ -1,0 +1,41 @@
+{
+	"name": "DS_SINK_TO_CSV",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_ADLS_Gen2_Sink",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"schema": {
+				"type": "string"
+			},
+			"table_name": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": {
+					"value": "@{dataset().table_name}",
+					"type": "Expression"
+				},
+				"folderPath": {
+					"value": "enterprise/@{dataset().schema}",
+					"type": "Expression"
+				},
+				"fileSystem": {
+					"value": "test",
+					"type": "Expression"
+				}
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": []
+	}
+}

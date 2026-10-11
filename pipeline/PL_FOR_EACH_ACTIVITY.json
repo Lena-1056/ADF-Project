@@ -1,0 +1,278 @@
+{
+	"name": "PL_FOR_EACH_ACTIVITY",
+	"properties": {
+		"activities": [
+			{
+				"name": "ForEach_Table",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup_TableList').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Copy_CurrentTable",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Read Source Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT * FROM @{item().SchemaName}.@{item().TableName}",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_AZURE_SQL",
+									"type": "DatasetReference"
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_SINK_TO_CSV",
+									"type": "DatasetReference",
+									"parameters": {
+										"schema": {
+											"value": "@item().SchemaName",
+											"type": "Expression"
+										},
+										"table_name": {
+											"value": "@item().TableName",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Read Source Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT COUNT_BIG(*) AS ExpectedRows\nFROM @{item().SchemaName}.@{item().TableName};",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "DS_AZURE_SQL",
+									"type": "DatasetReference"
+								}
+							}
+						},
+						{
+							"name": "If_RowCountMatches",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Copy_CurrentTable",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(\n    int(activity('Read Source Count').output.firstRow.ExpectedRows),\n    int(activity('Copy_CurrentTable').output.rowsCopied)\n)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Log Copy Mismatch",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogCopySuccess]",
+											"storedProcedureParameters": {
+												"PipelineRunID": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"SchemaName": {
+													"value": {
+														"value": "@item().SchemaName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().TableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Read Source Count').output.firstRow.ExpectedRows\n",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('Copy_CurrentTable').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AZURESQL_SOURCE",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "Fail_RowCountMismatch",
+										"type": "Fail",
+										"dependsOn": [
+											{
+												"activity": "Log Copy Mismatch",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "Source row count does not match rows copied for this table.",
+											"errorCode": "ROW_COUNT_MISMATCH"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Log Copy Success",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogCopySuccess]",
+											"storedProcedureParameters": {
+												"PipelineRunID": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"SchemaName": {
+													"value": {
+														"value": "@item().SchemaName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().TableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Copy_CurrentTable').output.rowsRead",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('Copy_CurrentTable').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AZURESQL_SOURCE",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": []
+	}
+}
