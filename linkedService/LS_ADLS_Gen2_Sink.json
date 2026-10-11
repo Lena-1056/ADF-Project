@@ -1,0 +1,10 @@
+{
+	"name": "LS_ADLS_Gen2_Sink",
+	"properties": {
+		"annotations": [],
+		"type": "AzureBlobFS",
+		"typeProperties": {
+			"url": "https://destination1056.dfs.core.windows.net/"
+		}
+	}
+}
