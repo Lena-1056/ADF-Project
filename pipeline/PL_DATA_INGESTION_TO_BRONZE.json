@@ -309,6 +309,14 @@
 				}
 			}
 		],
+		"variables": {
+			"current": {
+				"type": "String"
+			},
+			"watermark Value": {
+				"type": "String"
+			}
+		},
 		"annotations": []
 	}
 }
