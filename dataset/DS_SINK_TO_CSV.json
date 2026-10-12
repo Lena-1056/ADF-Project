@@ -23,7 +23,7 @@
 					"type": "Expression"
 				},
 				"folderPath": {
-					"value": "enterprise/@{dataset().schema}",
+					"value": "enterprise/application/@{dataset().schema}",
 					"type": "Expression"
 				},
 				"fileSystem": {

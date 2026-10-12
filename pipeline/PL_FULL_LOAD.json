@@ -1,0 +1,707 @@
+{
+	"name": "PL_FULL_LOAD",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup_TableList",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Lookup_PipelineRecordId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT\n    s.name AS SchemaName,\n    t.name AS TableName\nFROM sys.tables AS t\nINNER JOIN sys.schemas AS s\n    ON t.schema_id = s.schema_id\nWHERE s.name = 'product'\nAND t.is_ms_shipped = 0\nAND NOT (\n    s.name = 'finance'\n    AND t.name = 'ReconciliationRuns'\n)\nORDER BY\n    s.name,\n    t.name;",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_AZURE_SQL",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "SP_StartPipelineRun",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[audit].[usp_StartPipelineRun]",
+					"storedProcedureParameters": {
+						"BusinessKey": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"TriggerType": {
+							"value": {
+								"value": "@pipeline().TriggerType",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"SourceSystem": {
+							"value": "ADF",
+							"type": "String"
+						},
+						"BatchId": {
+							"value": "0",
+							"type": "Int64"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_AzureSQL_Audit",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Lookup_TableList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup_TableList').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Copy_Table_To_Bronze",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Lookup_Read_Source_Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT TOP (10) * FROM @{item().SchemaName}.@{item().TableName}",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_AZURE_SQL",
+									"type": "DatasetReference"
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_SINK_TO_CSV",
+									"type": "DatasetReference",
+									"parameters": {
+										"schema": {
+											"value": "@item().SchemaName",
+											"type": "Expression"
+										},
+										"table_name": {
+											"value": "@item().TableName",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Lookup_Read_Source_Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT COUNT_BIG(*) AS ExpectedRows\nFROM @{item().SchemaName}.@{item().TableName};",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "DS_AZURE_SQL",
+									"type": "DatasetReference"
+								}
+							}
+						},
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Copy_Table_To_Bronze",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(\n    int(activity('Lookup_Read_Source_Count').output.firstRow.ExpectedRows),\n    int(activity('Copy_Table_To_Bronze').output.rowsCopied)\n)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "SP_LogCopyMismactch",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogCopySuccess]",
+											"storedProcedureParameters": {
+												"PipelineRunID": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"SchemaName": {
+													"value": {
+														"value": "@item().SchemaName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().TableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Lookup_Read_Source_Count').output.firstRow.ExpectedRows",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AZURESQL_SOURCE",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "Fail_RowCountMismatch",
+										"type": "Fail",
+										"dependsOn": [
+											{
+												"activity": "SP_LogFailureActivity",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "Source row count does not match rows copied for this table.",
+											"errorCode": "ROW_COUNT_MISMATCH"
+										}
+									},
+									{
+										"name": "SP_LogFailureActivity",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "SP_LogCopyMismactch",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogActivity]",
+											"storedProcedureParameters": {
+												"PipelineRecordId": {
+													"value": {
+														"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"BusinessKey": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"ActivityName": {
+													"value": {
+														"value": "Copy_Table_To_Bronze",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"ActivityType": {
+													"value": "Copy",
+													"type": "String"
+												},
+												"ActivityStatus": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"StartTime": {
+													"value": {
+														"value": "@utcNow()",
+														"type": "Expression"
+													},
+													"type": "Datetime"
+												},
+												"EndTime": {
+													"value": {
+														"value": "@utcNow()",
+														"type": "Expression"
+													},
+													"type": "Datetime"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Lookup_Read_Source_Count').output.firstRow.ExpectedRows",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsWritten": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"SourceSystem": {
+													"value": "ADF",
+													"type": "String"
+												},
+												"BatchId": {
+													"value": "0",
+													"type": "Int32"
+												},
+												"ErrorMessage": {
+													"value": {
+														"value": "@concat(\n    'Row count mismatch. Source count: ', string(activity('Lookup_Read_Source_Count').output.firstRow.ExpectedRows), ', copied rows: ',\n    string(activity('Copy_Table_To_Bronze').output.rowsCopied)\n)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AzureSQL_Audit",
+											"type": "LinkedServiceReference"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "SP_LogCopySuccess",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogCopySuccess]",
+											"storedProcedureParameters": {
+												"PipelineRunID": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"SchemaName": {
+													"value": {
+														"value": "@item().SchemaName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().TableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsRead",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AzureSQL_Audit",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "SP_LogActivity",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "SP_LogCopySuccess",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[audit].[usp_LogActivity]",
+											"storedProcedureParameters": {
+												"PipelineRecordId": {
+													"value": {
+														"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"BusinessKey": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"ActivityName": {
+													"value": {
+														"value": "Copy_Table_To_Bronze",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"ActivityType": {
+													"value": "Copy",
+													"type": "String"
+												},
+												"ActivityStatus": {
+													"value": "Succeeded",
+													"type": "String"
+												},
+												"StartTime": {
+													"value": {
+														"value": "@utcNow()",
+														"type": "Expression"
+													},
+													"type": "Datetime"
+												},
+												"EndTime": {
+													"value": {
+														"value": "@utcNow()",
+														"type": "Expression"
+													},
+													"type": "Datetime"
+												},
+												"RowsRead": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsRead",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"RowsWritten": {
+													"value": {
+														"value": "@activity('Copy_Table_To_Bronze').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"ErrorMessage": {
+													"value": "",
+													"type": "String"
+												},
+												"SourceSystem": {
+													"value": "ADF",
+													"type": "String"
+												},
+												"BatchId": {
+													"value": "0",
+													"type": "Int32"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AzureSQL_Audit",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Lookup_PipelineRecordId",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "SP_StartPipelineRun",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat(\n    'SELECT record_id AS PipelineRecordId ',\n    'FROM audit.PipelineRuns ',\n    'WHERE run_id = ''',\n    pipeline().RunId,\n    ''''\n)",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_AZURE_SQL",
+						"type": "DatasetReference"
+					}
+				}
+			},
+			{
+				"name": "SP_FinishPipelineRun",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "ForEach1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[audit].[usp_FinishPipelineRun]",
+					"storedProcedureParameters": {
+						"PipelineRecordId": {
+							"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+							"type": "Int64"
+						},
+						"RunStatus": {
+							"value": "SUCCEEDED",
+							"type": "String"
+						},
+						"RowsRead": {
+							"value": "0",
+							"type": "Int64"
+						},
+						"RowsWritten": {
+							"value": "",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_AzureSQL_Audit",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "SP_FinishPipelineRun_Failed",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "ForEach1",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[audit].[usp_FinishPipelineRun]",
+					"storedProcedureParameters": {
+						"PipelineRecordId": {
+							"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+							"type": "Int64"
+						},
+						"RunStatus": {
+							"value": "FAILED",
+							"type": "String"
+						},
+						"RowsRead": {
+							"value": "0",
+							"type": "Int64"
+						},
+						"RowsWritten": {
+							"value": "",
+							"type": "String"
+						},
+						"ErrorMessage": {
+							"value": "PL_FULL_LOAD failed. Check ADF Monitor for the failing activity.",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_AzureSQL_Audit",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"annotations": []
+	}
+}
