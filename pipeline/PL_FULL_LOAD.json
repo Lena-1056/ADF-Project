@@ -138,7 +138,7 @@
 								"source": {
 									"type": "AzureSqlSource",
 									"sqlReaderQuery": {
-										"value": "SELECT TOP (10) * FROM @{item().SchemaName}.@{item().TableName}",
+										"value": "SELECT TOP(20) * FROM @{item().SchemaName}.@{item().TableName}",
 										"type": "Expression"
 									},
 									"queryTimeout": "02:00:00",
@@ -408,6 +408,148 @@
 											"referenceName": "LS_AzureSQL_Audit",
 											"type": "LinkedServiceReference"
 										}
+									},
+									{
+										"name": "EP_ValidationError",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "SP_LogCopyMismactch",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_LOGERROR",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"PipelineRecordId": {
+													"value": "@string(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+													"type": "Expression"
+												},
+												"ActivityName": {
+													"value": "SP_LogCopyMismatch",
+													"type": "Expression"
+												},
+												"ErrorCode": {
+													"value": "@string(activity('SP_LogCopyMismactch').error.errorCode)",
+													"type": "Expression"
+												},
+												"ErrorMessage": {
+													"value": "@string(activity('SP_LogCopyMismactch').error.message)",
+													"type": "Expression"
+												},
+												"ErrorType": {
+													"value": "StoredProcedureFailure",
+													"type": "Expression"
+												},
+												"SourceSystem": "ADF",
+												"BatchId": 0
+											}
+										}
+									},
+									{
+										"name": "EP_LogErrorFailure_Activity",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "SP_LogFailureActivity",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_LOGERROR",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"PipelineRecordId": {
+													"value": "@string(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+													"type": "Expression"
+												},
+												"ActivityName": {
+													"value": "SP_LogFailureActivity",
+													"type": "Expression"
+												},
+												"ErrorCode": {
+													"value": "@string(activity('SP_LogFailureActivity').error.errorCode)",
+													"type": "Expression"
+												},
+												"ErrorMessage": {
+													"value": "@string(activity('SP_LogFailureActivity').error.message)",
+													"type": "Expression"
+												},
+												"ErrorType": {
+													"value": "StoredProcedureFailure",
+													"type": "Expression"
+												},
+												"SourceSystem": "ADF",
+												"BatchId": 0
+											}
+										}
+									},
+									{
+										"name": "EP_OverallFail_Message",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Fail_RowCountMismatch",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_LOGERROR",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"PipelineRecordId": {
+													"value": "@string(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+													"type": "Expression"
+												},
+												"ActivityName": {
+													"value": "Fail_RowCountMismatch",
+													"type": "Expression"
+												},
+												"ErrorCode": {
+													"value": "ROW_COUNT_MISMATCH",
+													"type": "Expression"
+												},
+												"ErrorMessage": {
+													"value": "@string(activity('Fail_RowCountMismatch').error.message)",
+													"type": "Expression"
+												},
+												"ErrorType": {
+													"value": "RowCountMismatch",
+													"type": "Expression"
+												},
+												"SourceFile": "SQL DATABASE",
+												"SourceSystem": "ADF",
+												"BatchId": 0
+											}
+										}
 									}
 								],
 								"ifTrueActivities": [
@@ -568,6 +710,96 @@
 									}
 								]
 							}
+						},
+						{
+							"name": "EP_LogSourceCount_Error",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Lookup_Read_Source_Count",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PL_LOGERROR",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"PipelineRecordId": {
+										"value": "@string(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+										"type": "Expression"
+									},
+									"ActivityName": {
+										"value": "Lookup_Read_Source_Count",
+										"type": "Expression"
+									},
+									"ErrorCode": "@string(activity('Lookup_Read_Source_Count').error.errorCode)",
+									"ErrorMessage": "@string(activity('Lookup_Read_Source_Count').error.message)",
+									"ErrorType": {
+										"value": "LookupActivityFailure",
+										"type": "Expression"
+									},
+									"SourceFile": "SQL DATABASE",
+									"SourceSystem": "ADF",
+									"BatchId": 0
+								}
+							}
+						},
+						{
+							"name": "EP_LOGCOPYERROR",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Copy_Table_To_Bronze",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PL_LOGERROR",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"PipelineRecordId": {
+										"value": "@string(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+										"type": "Expression"
+									},
+									"ActivityName": {
+										"value": "Copy_Table_To_Bronze",
+										"type": "Expression"
+									},
+									"ErrorCode": {
+										"value": "@string(activity('Copy_Table_To_Bronze').error.errorCode)",
+										"type": "Expression"
+									},
+									"ErrorMessage": {
+										"value": "@string(activity('Copy_Table_To_Bronze').error.message)",
+										"type": "Expression"
+									},
+									"ErrorType": {
+										"value": "CopyActivityFailure",
+										"type": "Expression"
+									},
+									"SourceFile": "SQL DATABASE",
+									"SourceSystem": "ADF",
+									"BatchId": 0
+								}
+							}
 						}
 					]
 				}
@@ -630,7 +862,10 @@
 					"storedProcedureName": "[audit].[usp_FinishPipelineRun]",
 					"storedProcedureParameters": {
 						"PipelineRecordId": {
-							"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+							"value": {
+								"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+								"type": "Expression"
+							},
 							"type": "Int64"
 						},
 						"RunStatus": {
@@ -675,7 +910,10 @@
 					"storedProcedureName": "[audit].[usp_FinishPipelineRun]",
 					"storedProcedureParameters": {
 						"PipelineRecordId": {
-							"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+							"value": {
+								"value": "@int(activity('Lookup_PipelineRecordId').output.firstRow.PipelineRecordId)",
+								"type": "Expression"
+							},
 							"type": "Int64"
 						},
 						"RunStatus": {
