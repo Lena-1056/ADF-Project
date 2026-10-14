@@ -741,8 +741,14 @@
 										"value": "Lookup_Read_Source_Count",
 										"type": "Expression"
 									},
-									"ErrorCode": "@string(activity('Lookup_Read_Source_Count').error.errorCode)",
-									"ErrorMessage": "@string(activity('Lookup_Read_Source_Count').error.message)",
+									"ErrorCode": {
+										"value": "@string(activity('Lookup_Read_Source_Count').error.errorCode)",
+										"type": "Expression"
+									},
+									"ErrorMessage": {
+										"value": "@string(activity('Lookup_Read_Source_Count').error.message)",
+										"type": "Expression"
+									},
 									"ErrorType": {
 										"value": "LookupActivityFailure",
 										"type": "Expression"
