@@ -1,0 +1,96 @@
+{
+	"name": "PL_DATA_QUALITY",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup_DQ_Rules",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "WITH RankedRules AS\n(\n    SELECT\n        dqr.record_id AS RuleID,\n        tc.source_schema,\n        tc.source_table,\n        dqr.column_name,\n        dqr.rule_name,\n        dqr.rule_type,\n        dqr.severity,\n        dqr.table_configuration_id,\n        ROW_NUMBER() OVER\n        (\n            PARTITION BY\n                tc.source_schema,\n                tc.source_table,\n                dqr.column_name,\n                dqr.rule_name,\n                dqr.rule_type,\n                dqr.rule_expression,\n                dqr.severity,\n                dqr.comparison_operator,\n                dqr.allowed_values,\n                dqr.comparison_value\n            ORDER BY dqr.record_id\n        ) AS rn\n    FROM metadata.DataQualityRules AS dqr\n    INNER JOIN metadata.TableConfigurations AS tc\n        ON tc.record_id = dqr.table_configuration_id\n    WHERE dqr.is_active = 1\n      AND tc.is_active = 1\n)\nSELECT\n    RuleID,\n    source_schema,\n    source_table,\n    column_name,\n    rule_name,\n    rule_type,\n    severity,\n    table_configuration_id\nFROM RankedRules\nWHERE rn = 1\nORDER BY source_schema, source_table, RuleID;",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_AZURE_SQL",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach_DQ_Rules",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Lookup_DQ_Rules",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup_DQ_Rules').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "SP_Run_Data_Quality_Check",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[audit].[usp_RunDataQualityCheck]",
+								"storedProcedureParameters": {
+									"BatchId": {
+										"value": "0",
+										"type": "Int32"
+									},
+									"RuleID": {
+										"value": {
+											"value": "@item().RuleID",
+											"type": "Expression"
+										},
+										"type": "Int64"
+									},
+									"SourceSystem": {
+										"value": "ADF",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_AzureSQL_Audit",
+								"type": "LinkedServiceReference"
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": []
+	}
+}
