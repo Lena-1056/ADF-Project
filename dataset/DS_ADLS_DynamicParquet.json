@@ -23,7 +23,7 @@
 					"type": "Expression"
 				},
 				"folderPath": {
-					"value": "enterprise/@{dataset().schema}",
+					"value": "enterprise/@{dataset().schema}/@{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
 					"type": "Expression"
 				},
 				"fileSystem": "bronze"
