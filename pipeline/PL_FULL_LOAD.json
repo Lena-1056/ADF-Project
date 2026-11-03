@@ -25,7 +25,7 @@
 					"source": {
 						"type": "AzureSqlSource",
 						"sqlReaderQuery": {
-							"value": "SELECT\n    s.name AS SchemaName,\n    t.name AS TableName\nFROM sys.tables AS t\nINNER JOIN sys.schemas AS s\n    ON t.schema_id = s.schema_id\nWHERE s.name IN (\n    'customer',\n    'finance',\n    'hr',\n    'inventory',\n    'marketing',\n    'product',\n    'reference',\n    'sales',\n    'shipping',\n    'support'\n)\nAND t.is_ms_shipped = 0\nAND NOT (\n    s.name = 'finance'\n    AND t.name = 'ReconciliationRuns'\n)\nORDER BY\n    s.name,\n    t.name;",
+							"value": "SELECT\n    s.name AS SchemaName,\n    t.name AS TableName\nFROM sys.tables AS t\nINNER JOIN sys.schemas AS s\n    ON t.schema_id = s.schema_id\nWHERE s.name IN (\n    'customer',\n    'finance',\n    'hr',\n    'inventory',\n    'marketing',\n    'product',\n    'reference',\n    'sales',\n    'shipping',\n    'support'\n)\nAND t.is_ms_shipped = 0\nAND NOT (\n    s.name = 'finance'\n    AND t.name = 'ReconciliationRuns'\n)\nORDER BY\n    s.name,\n    t.name;\n\n",
 							"type": "Expression"
 						},
 						"queryTimeout": "02:00:00",
